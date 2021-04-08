@@ -64,9 +64,9 @@ class TemporalConvNet2d(nn.Module):
         return self.network(x)
 
 
-class Model(nn.Module):
+class Model2D(nn.Module):
     def __init__(self, input_size, output_size, num_channels, kernel_size, dropout):
-        super(Model, self).__init__()
+        super(Model2D, self).__init__()
         self.tcn = TemporalConvNet2d(input_size, num_channels, kernel_size=(kernel_size, 3), dropout=dropout)
         self.groupnorm = nn.GroupNorm(num_channels=num_channels[-1], num_groups=1)
         self.conv = nn.Sequential(nn.Conv2d(in_channels=num_channels[-1],

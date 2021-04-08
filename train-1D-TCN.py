@@ -5,11 +5,10 @@ import matplotlib.pyplot as plt
 import os
 import torch
 from os.path import join
-import zipfile
 from utils import extract, standardize
-from datasets import SeismicDataset2D
+from datasets import SeismicDataset1D
 from torch.utils.data import DataLoader
-from model2D import Model2D
+from model1D import Model1D
 from sklearn.metrics import r2_score
 import errno
 import argparse
@@ -63,18 +62,14 @@ def train(**kwargs):
     seismic, model = preprocess(kwargs['no_wells'])
                                                                            
     
-    # specify width of seismic image samples around each pseudolog
-    width = 7
-    offset = int(width/2)
-    
     # specify pseudolog positions for training and validation
-    traces_seam_train = np.linspace(offset, len(model)-offset-1, kwargs['no_wells'], dtype=int)
-    traces_seam_validation = np.linspace(offset, len(model)-offset-1, 3, dtype=int)
+    traces_seam_train = np.linspace(0, len(model)-1, kwargs['no_wells'], dtype=int)
+    traces_seam_validation = np.linspace(0, len(model)-1, 3, dtype=int)
     
-    seam_train_dataset = SeismicDataset2D(seismic, model, traces_seam_train, width)
+    seam_train_dataset = SeismicDataset1D(seismic, model, traces_seam_train)
     seam_train_loader = DataLoader(seam_train_dataset, batch_size = len(seam_train_dataset))
     
-    seam_val_dataset = SeismicDataset2D(seismic, model, traces_seam_validation, width)
+    seam_val_dataset = SeismicDataset1D(seismic, model, traces_seam_validation)
     seam_val_loader = DataLoader(seam_val_dataset, batch_size = len(seam_val_dataset))
     
     
@@ -82,7 +77,7 @@ def train(**kwargs):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # set up models
-    model_seam = Model2D(1,1,[10, 30, 60, 90, 120], 9, 0.4).to(device)
+    model_seam = Model1D().to(device)
     
     # Set up loss
     criterion = torch.nn.MSELoss()
@@ -100,12 +95,12 @@ def train(**kwargs):
       
       
       for x,y in seam_train_loader:
-        y_pred, x_hat = model_seam(x)
-        loss_train = criterion(y_pred, y) + criterion(x_hat, x)
+        y_pred = model_seam(x)
+        loss_train = criterion(y_pred, y) 
     
       for x, y in seam_val_loader:
         model_seam.eval()
-        y_pred, _ = model_seam(x)
+        y_pred = model_seam(x)
         val_loss = criterion(y_pred, y)
         
     
@@ -120,7 +115,7 @@ def train(**kwargs):
     if not os.path.isdir('saved_models'):  # check if directory for saved models exists
         os.mkdir('saved_models')
         
-    torch.save(model_seam.state_dict(), 'saved_models/model_seam.pth')
+    torch.save(model_seam.state_dict(), 'saved_models/model_seam_1D.pth')
 
 def test(**kwargs):
     """Function tests the trained network on SEAM and Marmousi sections and 
@@ -133,14 +128,10 @@ def test(**kwargs):
     # define device for training
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # specify width of seismic image samples around each pseudolog
-    width = 7
-    offset = int(width/2)
-    
     # specify pseudolog positions for testing 
-    traces_seam_test = np.linspace(offset, len(model)-offset-1, len(model)-int(2*offset), dtype=int)
+    traces_seam_test = np.arange(len(model), dtype=int)
     
-    seam_test_dataset = SeismicDataset2D(seismic, model, traces_seam_test, width)
+    seam_test_dataset = SeismicDataset1D(seismic, model, traces_seam_test)
     seam_test_loader = DataLoader(seam_test_dataset, batch_size = 8)
     
     # load saved models
@@ -148,8 +139,8 @@ def test(**kwargs):
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), 'saved_models')
         
     # set up models
-    model_seam = Model2D(1,1,[10, 30, 60, 90, 120], 9, 0.4).to(device)
-    model_seam.load_state_dict(torch.load('saved_models/model_seam.pth'))
+    model_seam = Model1D().to(device)
+    model_seam.load_state_dict(torch.load('saved_models/model_seam_1D.pth'))
     
     # infer on SEAM
     print("\nInferring on SEAM...")
@@ -161,7 +152,7 @@ def test(**kwargs):
     with torch.no_grad():
         for i, (x,y) in enumerate(seam_test_loader):
           model_seam.eval()
-          y_pred, _ = model_seam(x)
+          y_pred  = model_seam(x)
           AI_pred[mem:mem+len(x)] = y_pred.squeeze().data
           AI_act[mem:mem+len(x)] = y.squeeze().data
           mem += len(x)
